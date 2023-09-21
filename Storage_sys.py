@@ -1,16 +1,22 @@
 import customtkinter as CT
+import tkinter as tk
+from tkinter import ttk
 import sqlite3
 from datetime import datetime
 from PIL import Image, ImageTk
 import os
+import hashlib
 
 
 def database_inherit(sql, t, values):
     connect = sqlite3.connect("storage_manager.db")
     c = connect.cursor()
+
     if values is None:
         c.execute(sql)
-    elif len(values)>1:
+    elif len(values) > 1:
+        print(values)
+        print(sql)
         c.execute(sql, (values,))
     else:
         c.execute(sql, (values[0]))
@@ -98,13 +104,12 @@ class storage_main(CT.CTkFrame, app):
     def reveal_password(self, args):
         if args == 1:
             self.password.set(self.password.get())
-            CT.CTkEntry(self, textvariable=self.password, width=120).place(x=140, y=90)
+            CT.CTkEntry(self, textvariable=self.password, width=120, height=20).place(x=140, y=90)
             img1 = CT.CTkImage(Image.open(r"/home/inkon/Desktop/Coding/python_coding/Strorage_manager/revealed_eye.png"))
             CT.CTkButton(self, image=img1, text="", width=20, command=lambda: self.reveal_password(0),fg_color="transparent").place(x=260, y=90)
 
         elif args == 0:
-            print(self.password.get())
-            CT.CTkEntry(self, textvariable=self.password, width=120, show="*").place(x=140, y=90)
+            CT.CTkEntry(self, textvariable=self.password, width=120, show="*", height=20).place(x=140, y=90)
             self.Unrevealed_eye = CT.CTkImage(Image.open(r"/home/inkon/Desktop/Coding/python_coding/Strorage_manager/eye.png"))
             CT.CTkButton(self, image=self.Unrevealed_eye, text="", width=20, command=lambda: self.reveal_password(1), fg_color="transparent").place(x=260, y=90)
 
@@ -117,13 +122,16 @@ class storage_main(CT.CTkFrame, app):
     def login_pass(self):
         username = self.username.get()
         password = self.password.get()
+        hash = hashlib.sha256(password.encode('utf-8')).hexdigest()
+        print(hash)
         fetch = database_inherit("SELECT username, password FROM users WHERE username=?", "return", username)
-        if str(fetch[1]) == str(password):
+        print(fetch[1])
+        if str(fetch[1]) == str(hash):
             self.main_logged = logged_main(self)
             logging_all(username, "logging in")
 
         else:
-            CT.CTkLabel(self, text="incorrect password", width=120).place(x=140, y=140)
+            CT.CTkLabel(self, text="incorrect password", width=120).place(x=140, y=240)
 
     def admin_check(self):
         CT.CTkLabel(self, text="admin password", width=120).place(x=140, y=300)
@@ -133,8 +141,10 @@ class storage_main(CT.CTkFrame, app):
 
     def admin_pass_through(self):
         admin_check = self.admin_check_var.get()
+        hash = hashlib.sha256(admin_check.encode('utf-8')).hexdigest()
         fetch = database_inherit("SELECT password FROM users where username=?", "return", "admin")
-        if int(fetch[0]) == int(admin_check):
+        print(hash)
+        if str(fetch[0]) == str(hash):
             self.new_menu = admin_main(self)
             logging_all("guest", "logging into admin")
         else:
@@ -153,15 +163,47 @@ class admin_main(CT.CTkFrame, app):
         self.change_window = None
         self.dict = None
         self.new_menu = None
+        self.tree = None
 
         super().clear_all()
 
         CT.CTkLabel(self, text="admin_main").pack()
         CT.CTkButton(self, text="change_password", command=self.changing_admin_password).pack()
+        CT.CTkButton(self, text="confirming users", command=self.confirm_users_pass).pack()
         CT.CTkButton(self, text="back", command=self.back_to_main).pack()
 
     def changing_admin_password(self):
         super().clear_all()
+
+    def confirm_users_pass(self):
+        super().clear_all()
+        connect = sqlite3.connect("storage_manager.db")
+        c = connect.cursor()
+        c.execute("Select username_wait, password_wait from user_waitlist")
+        fetch = c.fetchone()
+
+        self.tree = ttk.Treeview(self, columns=("Username", "Password"), show='headings')
+        self.tree.heading("Username", text="Username")
+        self.tree.heading("Password", text="Password")
+
+        for items in fetch:
+            self.tree.insert("", tk.END, values=items)
+
+        self.tree.bind('<<TreeviewSelect>>', self.item_selected)
+        self.tree.place(x=0, y=0)
+
+    def item_selected(self, event):
+        for selected_item in self.tree.selection():
+            item = self.tree.item(selected_item)
+
+            CT.CTkButton(self, text="Accept", command=lambda: self.Accept_pass(selected_item)).place(x=100, y=300)
+            CT.CTkButton(self, text="Deny", command=lambda: self.Deny_pass(selected_item)).place(x=100, y=330)
+
+    def Accept_pass(self, selected_item):
+        print(selected_item, "etstesttestete")
+
+    def Deny_pass(self, item):
+        pass
 
     def back_to_main(self):
         self.back = storage_main(self)
@@ -215,18 +257,19 @@ class register_main(CT.CTkFrame, app):
             CT.CTkButton(self, image=self.Unrevealed_eye, text="", width=20, command=lambda: self.reveal_password(1), fg_color="transparent").place(x=260, y=100)
 
     def enter_values(self):
-        username = self.username_input.get()
-        password = self.password_input.get()
         fetch = database_inherit(
-            "SELECT users.username, user_waitlist.username_wait FROM users, user_waitlist WHERE user_waitlist.username_wait=users.username",
-            "return", None)
-        self.set_to_bool = set(fetch)
-        if str(username) in self.set_to_bool:
-            CT.CTkLabel(self, text="this username is already taken")
+            "SELECT users.username, user_waitlist.username_wait FROM users, user_waitlist WHERE user_waitlist.username_wait=?",
+            "return", self.username_input.get())
+        if self.username_input.get() is not None:  # checking that the user has entered atleast something
+            if fetch is not None:  # checking that the username is not already in use
+                CT.CTkLabel(self, text="This username is already taken", width=60).place(x=140, y=350)
 
-        else:
-            database_inherit("INSERT into user_waitlist(username_wait, password_wait) VALUES(?,?)", "commit",
-                                     (username, password,))
+            elif fetch is None:
+                connect = sqlite3.connect("storage_manager.db")
+                c = connect.cursor()
+                values = (self.username_input.get(), self.password_input.get())
+                c.execute("INSERT INTO user_waitlist(username_wait, password_wait) VALUES(?,?)", (self.username_input.get(), self.password_input.get()))
+                connect.commit()
 
 
 class logged_main(CT.CTkFrame, app):
@@ -259,9 +302,9 @@ class logged_main(CT.CTkFrame, app):
 
         CT.CTkLabel(self, text="adding item main").pack()
 
-        CT.CTkEntry(self, textvariable=self.item_name, width=120).place(x=140, y=90)
-        CT.CTkEntry(self, textvariable=self.item_kg, width=60).place(x=140, y=130)
-        CT.CTkEntry(self, textvariable=self.item_value, width=60).place(x=200, y=130)
+        CT.CTkEntry(self, textvariable=self.item_name, width=120).pack()
+        CT.CTkEntry(self, textvariable=self.item_kg, width=60).pack()
+        CT.CTkEntry(self, textvariable=self.item_value, width=60).pack()
 
         CT.CTkButton(self, text="enter", command=lambda: self.items("add"), width=60).place(x=140, y=160)
         CT.CTkButton(self, text="back", command=self.main_GUI, width=60).place(x=200, y=160)
